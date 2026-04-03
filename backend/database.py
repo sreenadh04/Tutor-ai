@@ -32,6 +32,7 @@ class Document(Base):
     total_pages = Column(Integer, default=0)
     total_chunks = Column(Integer, default=0)
     vector_store_path = Column(String)
+    user_id = Column(String, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # Relationships

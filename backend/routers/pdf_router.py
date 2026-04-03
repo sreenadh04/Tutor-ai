@@ -5,7 +5,7 @@ Upload, process, and manage PDF documents.
 
 import uuid
 import logging
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Form
 from sqlalchemy.orm import Session
 
 from database import get_db, Document
@@ -23,6 +23,7 @@ MAX_BYTES = MAX_PDF_SIZE_MB * 1024 * 1024
 @router.post("/upload", response_model=DocumentResponse)
 async def upload_pdf(
     file: UploadFile = File(...),
+    user_id: str = Form(...),
     db: Session = Depends(get_db),
 ):
     """
@@ -68,6 +69,7 @@ async def upload_pdf(
             total_pages=stats.get("total_pages", 0),
             total_chunks=len(chunks),
             vector_store_path=str(doc_id),
+            user_id=user_id,
         )
         db.add(doc)
         db.commit()
@@ -84,9 +86,11 @@ async def upload_pdf(
 
 
 @router.get("/list", response_model=DocumentListResponse)
-def list_documents(db: Session = Depends(get_db)):
+def list_documents(user_id: str, db: Session = Depends(get_db)):
     """List all uploaded documents."""
-    docs = db.query(Document).order_by(Document.created_at.desc()).all()
+    docs = db.query(Document).filter(
+    Document.user_id == user_id
+).order_by(Document.created_at.desc()).all()
     return DocumentListResponse(
         documents=[DocumentResponse.from_orm(d) for d in docs],
         total=len(docs),
