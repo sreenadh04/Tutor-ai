@@ -1,81 +1,76 @@
 """
 MediTutor AI - LLM Service
-Multi-model fallback: Groq → HuggingFace Inference API
-Includes rate limiting, retry logic, and caching.
+Multi-model fallback: Groq -> HuggingFace Inference API with per-user rate limiting.
 """
 
-import time
-import json
-import logging
-import hashlib
 import asyncio
+import hashlib
+import logging
+import time
+from collections import defaultdict
 from typing import Optional, Tuple
+
 import httpx
+
 from config import (
-    GROQ_API_KEY, HUGGINGFACE_API_KEY,
-    GROQ_API_URL, HF_API_URL,
-    GROQ_MODELS, HF_MODELS,
-    MAX_TOKENS, TEMPERATURE,
-    REQUEST_TIMEOUT, RETRY_ATTEMPTS, RETRY_DELAY,
-    GROQ_RPM, HF_RPM
+    GROQ_API_KEY,
+    GROQ_API_URL,
+    GROQ_MODELS,
+    GROQ_RPM,
+    HF_API_URL,
+    HF_MODELS,
+    HF_RPM,
+    HUGGINGFACE_API_KEY,
+    MAX_TOKENS,
+    REQUEST_TIMEOUT,
+    RETRY_ATTEMPTS,
+    RETRY_DELAY,
+    TEMPERATURE,
 )
-from utils.cache import CacheManager
+from utils.cache import get_cache
 
 logger = logging.getLogger(__name__)
-cache = CacheManager()
+cache = get_cache()
 
-# ─── Rate Limiter ─────────────────────────────────────────────────────────────
 
-class RateLimiter:
+class PerUserRateLimiter:
     def __init__(self, requests_per_minute: int):
-        self.rpm = requests_per_minute
         self.min_interval = 60.0 / requests_per_minute
-        self.last_call = 0.0
+        self._last_call: dict[str, float] = defaultdict(float)
         self._lock = asyncio.Lock()
 
-    async def wait(self):
+    async def wait(self, user_id: Optional[str]):
+        key = user_id or "anonymous"
         async with self._lock:
             now = time.time()
-            elapsed = now - self.last_call
+            elapsed = now - self._last_call[key]
             if elapsed < self.min_interval:
                 await asyncio.sleep(self.min_interval - elapsed)
-            self.last_call = time.time()
+            self._last_call[key] = time.time()
 
 
-groq_limiter = RateLimiter(GROQ_RPM)
-hf_limiter = RateLimiter(HF_RPM)
+groq_limiter = PerUserRateLimiter(GROQ_RPM)
+hf_limiter = PerUserRateLimiter(HF_RPM)
 
-
-# ─── Core LLM Class ───────────────────────────────────────────────────────────
 
 class LLMService:
-    """
-    Tries models in this order:
-      1. Groq (llama-3.1-8b-instant) — fastest free tier
-      2. Groq fallback models
-      3. HuggingFace Inference API models
-    """
-
     def __init__(self):
         self.groq_available = bool(GROQ_API_KEY)
         self.hf_available = bool(HUGGINGFACE_API_KEY)
 
-    # ── Cache key helper ──────────────────────────────────────────────────────
     @staticmethod
     def _cache_key(prompt: str, system: str) -> str:
-        combined = f"{system}|||{prompt}"
-        return "llm:" + hashlib.md5(combined.encode()).hexdigest()
+        return "llm:" + hashlib.sha256(f"{system}|||{prompt}".encode("utf-8")).hexdigest()
 
-    # ── Groq call ─────────────────────────────────────────────────────────────
     async def _call_groq(
         self,
         messages: list,
         model: str,
+        user_id: Optional[str],
         max_tokens: int = MAX_TOKENS,
         temperature: float = TEMPERATURE,
     ) -> str:
-        await groq_limiter.wait()
-
+        await groq_limiter.wait(user_id)
         headers = {
             "Authorization": f"Bearer {GROQ_API_KEY}",
             "Content-Type": "application/json",
@@ -86,22 +81,19 @@ class LLMService:
             "max_tokens": max_tokens,
             "temperature": temperature,
         }
-
         async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
-            resp = await client.post(GROQ_API_URL, json=payload, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
-            return data["choices"][0]["message"]["content"].strip()
+            response = await client.post(GROQ_API_URL, json=payload, headers=headers)
+            response.raise_for_status()
+            return response.json()["choices"][0]["message"]["content"].strip()
 
-    # ── HuggingFace call ──────────────────────────────────────────────────────
     async def _call_huggingface(
         self,
         prompt: str,
         model: str,
+        user_id: Optional[str],
         max_tokens: int = MAX_TOKENS,
     ) -> str:
-        await hf_limiter.wait()
-
+        await hf_limiter.wait(user_id)
         url = HF_API_URL.format(model=model)
         headers = {"Authorization": f"Bearer {HUGGINGFACE_API_KEY}"}
         payload = {
@@ -115,31 +107,24 @@ class LLMService:
         }
 
         async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
-            for attempt in range(3):
-                resp = await client.post(url, json=payload, headers=headers)
-                
-                # Model loading — wait and retry
-                if resp.status_code == 503:
-                    wait_time = resp.json().get("estimated_time", 20)
-                    logger.info(f"HF model loading, waiting {wait_time}s...")
-                    await asyncio.sleep(min(wait_time, 30))
+            for _ in range(RETRY_ATTEMPTS):
+                response = await client.post(url, json=payload, headers=headers)
+                if response.status_code == 503:
+                    wait_time = min(response.json().get("estimated_time", 20), 30)
+                    await asyncio.sleep(wait_time)
                     continue
-                
-                resp.raise_for_status()
-                data = resp.json()
-                
+                response.raise_for_status()
+                data = response.json()
                 if isinstance(data, list) and data:
                     return data[0].get("generated_text", "").strip()
                 return str(data)
-        
-        raise Exception("HuggingFace model failed after retries")
 
-    # ── Format prompt for HF models ───────────────────────────────────────────
+        raise RuntimeError("HuggingFace model failed after retries")
+
     @staticmethod
     def _format_hf_prompt(system: str, user: str) -> str:
         return f"<s>[INST] {system}\n\n{user} [/INST]"
 
-    # ── Main generate method with full fallback chain ─────────────────────────
     async def generate(
         self,
         prompt: str,
@@ -147,82 +132,62 @@ class LLMService:
         max_tokens: int = MAX_TOKENS,
         temperature: float = TEMPERATURE,
         use_cache: bool = True,
+        user_id: Optional[str] = None,
     ) -> Tuple[str, str]:
-        """
-        Returns: (response_text, model_name_used)
-        """
-        # Check cache first
-        if use_cache:
-            cache_key = self._cache_key(prompt, system)
-            cached = cache.get(cache_key)
+        cache_key = self._cache_key(prompt, system)
+        if use_cache and user_id:
+            cached = cache.get(user_id, cache_key)
             if cached:
-                logger.info("LLM cache hit")
-                return cached["text"], cached["model"] + " (cached)"
+                return cached["text"], f'{cached["model"]} (cached)'
 
         messages = [
             {"role": "system", "content": system},
             {"role": "user", "content": prompt},
         ]
 
-        # ── Try Groq models ──────────────────────────────────────────────────
         if self.groq_available:
             for model in GROQ_MODELS:
                 for attempt in range(RETRY_ATTEMPTS):
                     try:
-                        text = await self._call_groq(messages, model, max_tokens, temperature)
-                        logger.info(f"Groq success: {model}")
-                        if use_cache:
-                            cache.set(cache_key, {"text": text, "model": model})
+                        text = await self._call_groq(messages, model, user_id, max_tokens, temperature)
+                        if use_cache and user_id:
+                            cache.set(user_id, cache_key, {"text": text, "model": model})
                         return text, model
-                    except httpx.HTTPStatusError as e:
-                        if e.response.status_code == 429:
-                            # Rate limited — wait and retry
+                    except httpx.HTTPStatusError as exc:
+                        if exc.response.status_code == 429:
                             await asyncio.sleep(RETRY_DELAY * (attempt + 1))
                             continue
-                        elif e.response.status_code in [400, 401, 403]:
-                            # Auth or bad request — skip this model
-                            logger.warning(f"Groq {model} auth error: {e}")
+                        if exc.response.status_code in {400, 401, 403}:
+                            logger.warning("Groq auth/request error for model %s: %s", model, exc)
                             break
-                        logger.warning(f"Groq {model} attempt {attempt+1} failed: {e}")
+                        logger.warning("Groq error for model %s attempt %s: %s", model, attempt + 1, exc)
                         await asyncio.sleep(RETRY_DELAY)
-                    except Exception as e:
-                        logger.warning(f"Groq {model} attempt {attempt+1} error: {e}")
+                    except Exception as exc:
+                        logger.warning("Groq failure for model %s attempt %s: %s", model, attempt + 1, exc)
                         await asyncio.sleep(RETRY_DELAY)
 
-        # ── Try HuggingFace models ────────────────────────────────────────────
         if self.hf_available:
             hf_prompt = self._format_hf_prompt(system, prompt)
             for model in HF_MODELS:
                 for attempt in range(RETRY_ATTEMPTS):
                     try:
-                        text = await self._call_huggingface(hf_prompt, model, max_tokens)
-                        logger.info(f"HuggingFace success: {model}")
-                        if use_cache:
-                            cache.set(cache_key, {"text": text, "model": model})
+                        text = await self._call_huggingface(hf_prompt, model, user_id, max_tokens)
+                        if use_cache and user_id:
+                            cache.set(user_id, cache_key, {"text": text, "model": model})
                         return text, model
-                    except Exception as e:
-                        logger.warning(f"HF {model} attempt {attempt+1} error: {e}")
+                    except Exception as exc:
+                        logger.warning("HF failure for model %s attempt %s: %s", model, attempt + 1, exc)
                         await asyncio.sleep(RETRY_DELAY)
 
-        # ── Complete failure ──────────────────────────────────────────────────
-        raise Exception(
-            "All LLM providers failed. Check your API keys and rate limits. "
-            "Add GROQ_API_KEY and/or HUGGINGFACE_API_KEY to your .env file."
+        raise RuntimeError(
+            "All LLM providers failed. Configure GROQ_API_KEY and/or HUGGINGFACE_API_KEY."
         )
 
     async def check_availability(self) -> dict:
-        """Quick check of which providers are configured."""
         return {
-            "groq": {
-                "configured": self.groq_available,
-                "models": GROQ_MODELS,
-            },
-            "huggingface": {
-                "configured": self.hf_available,
-                "models": HF_MODELS,
-            },
+            "groq": {"configured": self.groq_available, "models": GROQ_MODELS},
+            "huggingface": {"configured": self.hf_available, "models": HF_MODELS},
         }
 
 
-# ─── Singleton instance ───────────────────────────────────────────────────────
 llm_service = LLMService()

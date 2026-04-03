@@ -1,14 +1,13 @@
 """
 MediTutor AI - Pydantic Schemas
-Request/response models for all API endpoints.
+Request and response models for API endpoints.
 """
 
-from typing import Optional, List, Any
-from pydantic import BaseModel, Field
 from datetime import datetime
+from typing import Any, List, Optional
 
+from pydantic import BaseModel, Field
 
-# ─── Document Schemas ─────────────────────────────────────────────────────────
 
 class DocumentResponse(BaseModel):
     id: str
@@ -26,12 +25,11 @@ class DocumentListResponse(BaseModel):
     total: int
 
 
-# ─── Q&A Schemas ──────────────────────────────────────────────────────────────
-
 class QARequest(BaseModel):
     document_id: str
     question: str = Field(..., min_length=5, max_length=500)
     session_id: Optional[str] = None
+    user_id: Optional[str] = None
 
 
 class SourceChunk(BaseModel):
@@ -48,12 +46,11 @@ class QAResponse(BaseModel):
     cached: bool = False
 
 
-# ─── Flashcard Schemas ────────────────────────────────────────────────────────
-
 class FlashcardRequest(BaseModel):
     document_id: str
-    topic: Optional[str] = None          # None = full document
+    topic: Optional[str] = None
     count: int = Field(default=10, ge=1, le=30)
+    user_id: Optional[str] = None
 
 
 class FlashcardItem(BaseModel):
@@ -72,19 +69,18 @@ class FlashcardResponse(BaseModel):
     cached: bool = False
 
 
-# ─── MCQ Schemas ──────────────────────────────────────────────────────────────
-
 class MCQRequest(BaseModel):
     document_id: str
     topic: Optional[str] = None
     count: int = Field(default=5, ge=1, le=20)
+    user_id: Optional[str] = None
 
 
 class MCQItem(BaseModel):
     id: str
     question: str
-    options: List[str]          # exactly 4 options
-    correct_index: int           # 0-3
+    options: List[str]
+    correct_index: int
     explanation: str
     topic: Optional[str] = None
 
@@ -97,10 +93,17 @@ class MCQResponse(BaseModel):
     cached: bool = False
 
 
+class MCQAnswer(BaseModel):
+    question_id: str
+    selected_index: int = Field(..., ge=0, le=3)
+    topic: Optional[str] = None
+
+
 class MCQSubmission(BaseModel):
     document_id: str
     session_id: str
-    answers: List[dict]     # [{"question_id": ..., "selected_index": ..., "topic": ...}]
+    answers: List[MCQAnswer]
+    user_id: Optional[str] = None
 
 
 class MCQResult(BaseModel):
@@ -110,10 +113,9 @@ class MCQResult(BaseModel):
     feedback: List[dict]
 
 
-# ─── Progress Schemas ─────────────────────────────────────────────────────────
-
 class ProgressResponse(BaseModel):
-    student_id: str
+    user_id: str
+    student_id: Optional[str] = None
     document_id: str
     total_attempts: int
     total_correct: int
@@ -126,7 +128,7 @@ class ProgressResponse(BaseModel):
 
 class SessionCreate(BaseModel):
     document_id: str
-    student_id: str = "default_student"
+    user_id: Optional[str] = None
 
 
 class SessionResponse(BaseModel):
@@ -135,12 +137,10 @@ class SessionResponse(BaseModel):
     started_at: datetime
 
 
-# ─── Prerequisite Schemas ─────────────────────────────────────────────────────
-
 class PrerequisiteRequest(BaseModel):
     document_id: str
-    query: str
-    student_id: str = "default_student"
+    query: str = Field(..., min_length=3, max_length=500)
+    user_id: Optional[str] = None
 
 
 class PrerequisiteResponse(BaseModel):
@@ -151,8 +151,6 @@ class PrerequisiteResponse(BaseModel):
     weak_related_topics: List[str]
     model_used: str
 
-
-# ─── Health / Status ──────────────────────────────────────────────────────────
 
 class HealthResponse(BaseModel):
     status: str

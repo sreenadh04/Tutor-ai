@@ -1,27 +1,25 @@
 """
 MediTutor AI - PDF Service
-Extract text from PDFs, chunk intelligently, and store embeddings in FAISS.
+Extract text from PDFs, chunk content, and persist uploads locally.
 """
 
-import uuid
 import logging
+import re
+import uuid
 from pathlib import Path
-from typing import List, Dict, Tuple, Optional
+from typing import Dict, List, Tuple
 
-import fitz                        # PyMuPDF — best for text extraction
+import fitz
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from config import (
-    UPLOAD_DIR, CHUNK_SIZE, CHUNK_OVERLAP, VECTOR_DIR
-)
+from config import CHUNK_OVERLAP, CHUNK_SIZE, UPLOAD_DIR
 
 logger = logging.getLogger(__name__)
 
+_SAFE_NAME_PATTERN = re.compile(r"[^A-Za-z0-9._-]+")
 
-# ─── Data Classes ─────────────────────────────────────────────────────────────
 
 class TextChunk:
-    """A single chunk of text with metadata."""
     def __init__(self, text: str, page_number: int, chunk_index: int, doc_id: str):
         self.text = text
         self.page_number = page_number
@@ -39,10 +37,11 @@ class TextChunk:
         }
 
 
-# ─── PDF Service ──────────────────────────────────────────────────────────────
+def _safe_component(value: str) -> str:
+    return _SAFE_NAME_PATTERN.sub("_", value.strip())
+
 
 class PDFService:
-
     def __init__(self):
         self.splitter = RecursiveCharacterTextSplitter(
             chunk_size=CHUNK_SIZE,
@@ -51,104 +50,82 @@ class PDFService:
         )
 
     def extract_text_with_pages(self, pdf_path: Path) -> List[Dict]:
-        """
-        Extract text page-by-page using PyMuPDF.
-        Returns list of {page_number, text} dicts.
-        """
         pages = []
         try:
-            doc = fitz.open(str(pdf_path))
-            for page_num, page in enumerate(doc, start=1):
+            document = fitz.open(str(pdf_path))
+            for page_number, page in enumerate(document, start=1):
                 text = page.get_text("text").strip()
                 if text:
-                    pages.append({
-                        "page_number": page_num,
-                        "text": text,
-                    })
-            doc.close()
-            logger.info(f"Extracted {len(pages)} pages from {pdf_path.name}")
-        except Exception as e:
-            logger.error(f"PDF extraction error: {e}")
-            raise ValueError(f"Could not read PDF: {e}")
-        
+                    pages.append({"page_number": page_number, "text": text})
+            document.close()
+        except Exception as exc:
+            raise ValueError(f"Could not read PDF: {exc}") from exc
         return pages
 
     def chunk_pages(self, pages: List[Dict], doc_id: str) -> List[TextChunk]:
-        """
-        Split page text into overlapping chunks.
-        Preserves page number in metadata.
-        """
         chunks: List[TextChunk] = []
         chunk_index = 0
 
         for page_data in pages:
-            page_num = page_data["page_number"]
-            page_text = page_data["text"]
-
-            # Split the page text
-            splits = self.splitter.split_text(page_text)
-            for split in splits:
-                if len(split.strip()) < 50:  # skip tiny fragments
+            for split in self.splitter.split_text(page_data["text"]):
+                cleaned = split.strip()
+                if len(cleaned) < 50:
                     continue
-                chunk = TextChunk(
-                    text=split.strip(),
-                    page_number=page_num,
-                    chunk_index=chunk_index,
-                    doc_id=doc_id,
+                chunks.append(
+                    TextChunk(
+                        text=cleaned,
+                        page_number=page_data["page_number"],
+                        chunk_index=chunk_index,
+                        doc_id=doc_id,
+                    )
                 )
-                chunks.append(chunk)
                 chunk_index += 1
-
-        logger.info(f"Created {len(chunks)} chunks for doc {doc_id}")
         return chunks
 
     def get_document_stats(self, pdf_path: Path) -> dict:
-        """Return quick stats about a PDF without full processing."""
         try:
-            doc = fitz.open(str(pdf_path))
+            document = fitz.open(str(pdf_path))
             stats = {
-                "total_pages": len(doc),
-                "title": doc.metadata.get("title", ""),
-                "author": doc.metadata.get("author", ""),
+                "total_pages": len(document),
+                "title": document.metadata.get("title", ""),
+                "author": document.metadata.get("author", ""),
             }
-            doc.close()
+            document.close()
             return stats
-        except Exception as e:
+        except Exception:
             return {"total_pages": 0, "title": "", "author": ""}
 
-    def save_upload(self, file_content: bytes, filename: str) -> Tuple[Path, str]:
-        """
-        Save uploaded PDF to disk.
-        Returns (path, doc_id).
-        """
-        doc_id = str(uuid.uuid4())
-        safe_name = f"{doc_id}_{filename}"
-        save_path = UPLOAD_DIR / safe_name
-        
-        with open(save_path, "wb") as f:
-            f.write(file_content)
-        
-        logger.info(f"Saved upload: {save_path}")
-        return save_path, doc_id
+    def save_upload(self, file_content: bytes, filename: str, user_id: str, doc_id: str) -> Path:
+        user_dir = UPLOAD_DIR / _safe_component(user_id)
+        user_dir.mkdir(parents=True, exist_ok=True)
+        save_path = user_dir / f"{_safe_component(doc_id)}_{_safe_component(filename)}"
+        with open(save_path, "wb") as handle:
+            handle.write(file_content)
+        return save_path
+
+    def find_upload(self, user_id: str, doc_id: str) -> Path | None:
+        user_dir = UPLOAD_DIR / _safe_component(user_id)
+        if not user_dir.exists():
+            return None
+        matches = list(user_dir.glob(f"{_safe_component(doc_id)}_*"))
+        return matches[0] if matches else None
 
     def process_pdf(
-        self, file_content: bytes, filename: str
+        self,
+        file_content: bytes,
+        filename: str,
+        user_id: str,
+        doc_id: str | None = None,
     ) -> Tuple[str, List[TextChunk], dict]:
-        """
-        Full pipeline: save → extract → chunk.
-        Returns (doc_id, chunks, stats).
-        """
-        pdf_path, doc_id = self.save_upload(file_content, filename)
+        document_id = doc_id or str(uuid.uuid4())
+        pdf_path = self.save_upload(file_content, filename, user_id, document_id)
         stats = self.get_document_stats(pdf_path)
         pages = self.extract_text_with_pages(pdf_path)
-        chunks = self.chunk_pages(pages, doc_id)
-        
+        chunks = self.chunk_pages(pages, document_id)
         stats["total_chunks"] = len(chunks)
-        stats["doc_id"] = doc_id
+        stats["doc_id"] = document_id
         stats["filename"] = filename
-        
-        return doc_id, chunks, stats
+        return document_id, chunks, stats
 
 
-# ─── Singleton ────────────────────────────────────────────────────────────────
 pdf_service = PDFService()
