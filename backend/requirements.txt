@@ -1,0 +1,28 @@
+# MediTutor AI — Backend Dependencies
+# Install: pip install -r requirements.txt
+
+# ── Web Framework ─────────────────────────────────────────────────────────────
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+python-multipart==0.0.9         # File uploads
+
+# ── Database ──────────────────────────────────────────────────────────────────
+sqlalchemy==2.0.30
+aiosqlite==0.20.0               # Async SQLite support
+
+# ── PDF Processing ────────────────────────────────────────────────────────────
+PyMuPDF==1.24.3                 # fitz — best PDF text extractor
+langchain-text-splitters==0.2.0 # Smart chunking
+
+# ── Embeddings (LOCAL — no API key needed) ────────────────────────────────────
+sentence-transformers==3.0.1
+torch==2.3.0                    # CPU-only is fine; reduces size
+faiss-cpu==1.8.0                # Vector similarity search
+
+# ── LLM API clients ───────────────────────────────────────────────────────────
+httpx==0.27.0                   # Async HTTP client (Groq + HuggingFace)
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+python-dotenv==1.0.1            # .env file loading
+pydantic==2.7.1                 # Data validation
+numpy==1.26.4

@@ -1,0 +1,39 @@
+version: "3.9"
+
+services:
+
+  # ── FastAPI Backend ──────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: meditutor-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/data:/app/data        # Persistent storage for DB + vectors
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY}
+      - ALLOWED_ORIGINS=http://localhost:8501
+      - DEBUG=false
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── Streamlit Frontend ───────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: meditutor-frontend
+    ports:
+      - "8501:8501"
+    environment:
+      - MEDITUTOR_API_URL=http://backend:8000/api/v1
+    depends_on:
+      - backend
+    restart: unless-stopped

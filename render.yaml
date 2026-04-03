@@ -1,0 +1,25 @@
+# render.yaml — Render.com deployment config for MediTutor AI backend
+# Docs: https://render.com/docs/yaml-spec
+
+services:
+  - type: web
+    name: meditutor-ai-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false        # Set via Render dashboard
+      - key: HUGGINGFACE_API_KEY
+        sync: false
+      - key: ALLOWED_ORIGINS
+        value: "https://your-streamlit-app.streamlit.app"
+      - key: DEBUG
+        value: "false"
+    disk:
+      name: meditutor-data
+      mountPath: /app/backend/data
+      sizeGB: 5
+    healthCheckPath: /health
+    autoDeploy: true

@@ -1,0 +1,38 @@
+# Environment
+.env
+.env.local
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+venv/
+.venv/
+env/
+
+# Data (don't commit user data or models)
+backend/data/
+*.db
+*.index
+*.meta.json
+
+# Streamlit
+.streamlit/secrets.toml
+frontend/.streamlit/secrets.toml
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# Build
+dist/
+build/
+*.egg-info/
