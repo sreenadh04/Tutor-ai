@@ -5,7 +5,6 @@ Main entry point. Configures API URL and global session state.
 
 import streamlit as st
 import os
-
 # ── Page Config (MUST be first Streamlit call) ───────────────────────────────
 st.set_page_config(
     page_title="MediTutor AI",
@@ -23,6 +22,7 @@ BASE_BACKEND = os.getenv(
 
 API_URL = f"{BASE_BACKEND}/api/v1"
 
+import uuid
 # ── Session State Defaults ───────────────────────────────────────────────────
 defaults = {
     "api_url": API_URL,
@@ -38,6 +38,9 @@ defaults = {
     "flashcard_index": 0,
     "show_answer": False,
 }
+
+if "user_id" not in st.session_state:
+    st.session_state.user_id = str(uuid.uuid4())
 for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
