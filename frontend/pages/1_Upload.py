@@ -43,7 +43,14 @@ if uploaded:
         with st.spinner("📖 Reading PDF... extracting text... building vector index..."):
             try:
                 files = {"file": (uploaded.name, uploaded.getvalue(), "application/pdf")}
-                resp = requests.post(f"{API_URL}/pdf/upload", files=files, timeout=120)
+                resp = requests.post(
+                    f"{API_URL}/pdf/upload",
+                    files=files,
+                    data={
+                        "user_id": st.session_state.user_id
+                    },
+                    timeout=120
+                )
                 
                 if resp.status_code == 200:
                     doc = resp.json()
