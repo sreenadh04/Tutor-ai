@@ -18,7 +18,7 @@ import os
 
 BASE_BACKEND = os.getenv(
     "BACKEND_URL",
-    "https://meditutor-backend-pvl5.onrender.com"
+    "https://meditutor-backend-v2.onrender.com"
 )
 
 API_URL = f"{BASE_BACKEND}/api/v1"
