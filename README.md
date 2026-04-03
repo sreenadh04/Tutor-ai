@@ -1,688 +1,768 @@
-# 🧠 MediTutor AI — Complete Setup Manual
+# MediTutor AI
 
-> **Zero-cost AI study assistant.** From ZIP download to live website — every step explained.
+MediTutor AI started from a very practical observation from MBBS students.
 
----
+Unlike many other learners, medical students often cannot rely on short notes alone. They need to study directly from dense textbooks, understand concepts deeply, retain them for long periods, and revise them repeatedly in a structured way. The same pattern also appears in other serious exam ecosystems such as NEET PG, NEET UG, JEE, and GATE, where students are highly dependent on textbooks, conceptual clarity, and disciplined revision.
 
-## 📋 TABLE OF CONTENTS
+During discussions with students, one recurring point came up again and again: revision is where many learners struggle the most. They may read a chapter once, even understand it reasonably well, but they do not always have an effective system to revisit and retain what they studied. Some students use tools like Anki to manually create flashcards and revise using spaced repetition, but building that material by hand from large textbooks is slow, repetitive, and mentally expensive.
 
-1. [Architecture Overview](#1-architecture-overview)
-2. [Folder Structure](#2-folder-structure)
-3. [Prerequisites](#3-prerequisites)
-4. [Get Your Free API Keys](#4-get-your-free-api-keys)
-5. [Local Setup (Your Computer)](#5-local-setup-your-computer)
-6. [Deploy Backend to Render.com (Free)](#6-deploy-backend-to-rendercom-free)
-7. [Deploy Frontend to Streamlit Cloud (Free)](#7-deploy-frontend-to-streamlit-cloud-free)
-8. [Environment Variables Reference](#8-environment-variables-reference)
-9. [How the Multi-Model Fallback Works](#9-how-the-multi-model-fallback-works)
-10. [Feature Walkthroughs](#10-feature-walkthroughs)
-11. [Troubleshooting](#11-troubleshooting)
-12. [Scaling Strategy (Future)](#12-scaling-strategy-future)
+That is where the core project idea came from:
 
----
+> Can generative AI and RAG be used to turn heavy textbook study into an interactive, revision-friendly learning system without losing grounding in the actual source material?
 
-## 1. ARCHITECTURE OVERVIEW
+MediTutor AI is the answer to that question. It is a full-stack, AI-powered study assistant for textbook-based learning. A user uploads a PDF, the system extracts and chunks the text, builds a searchable knowledge base, and then enables grounded question answering, flashcard generation, MCQ generation, prerequisite guidance, and progress tracking.
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        MediTutor AI                             │
-│                                                                 │
-│  ┌──────────────────┐          ┌──────────────────────────────┐ │
-│  │   FRONTEND       │  HTTP    │   BACKEND (FastAPI)          │ │
-│  │  Streamlit UI    │◄────────►│   Port 8000                  │ │
-│  │  Port 8501       │  REST    │                              │ │
-│  │                  │  API     │  ┌──────────────────────┐    │ │
-│  │  6 Pages:        │          │  │  Routers             │    │ │
-│  │  • Home          │          │  │  /api/v1/pdf         │    │ │
-│  │  • Upload PDF    │          │  │  /api/v1/qa          │    │ │
-│  │  • Q&A Chat      │          │  │  /api/v1/flashcards  │    │ │
-│  │  • Flashcards    │          │  │  /api/v1/mcq         │    │ │
-│  │  • MCQ Quiz      │          │  │  /api/v1/progress    │    │ │
-│  │  • Progress      │          │  │  /api/v1/prereq      │    │ │
-│  │  • Prerequisites │          │  └──────────┬───────────┘    │ │
-│  └──────────────────┘          │             │                 │ │
-│                                │  ┌──────────▼───────────┐    │ │
-│                                │  │  Services Layer       │    │ │
-│                                │  │                       │    │ │
-│                                │  │  PDFService           │    │ │
-│                                │  │  VectorService (FAISS)│    │ │
-│                                │  │  LLMService           │    │ │
-│                                │  │  FlashcardService     │    │ │
-│                                │  │  MCQService           │    │ │
-│                                │  │  ProgressService      │    │ │
-│                                │  └──────────┬───────────┘    │ │
-│                                │             │                 │ │
-│                                │  ┌──────────▼───────────┐    │ │
-│                                │  │  Data Layer           │    │ │
-│                                │  │                       │    │ │
-│                                │  │  SQLite DB            │    │ │
-│                                │  │  FAISS Index (disk)   │    │ │
-│                                │  │  Disk Cache (JSON)    │    │ │
-│                                │  └───────────────────────┘    │ │
-│                                └──────────────────────────────┘ │
-│                                                                 │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │  EXTERNAL APIs (Free Tier)                               │   │
-│  │                                                          │   │
-│  │  1st: Groq API ──► llama-3.1-8b-instant (fastest)        │   │
-│  │  2nd: HuggingFace ──► Mistral-7B / Zephyr (fallback)    │   │
-│  │  Embeddings: sentence-transformers (LOCAL, no API)       │   │
-│  └──────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
+This project is built with a FastAPI backend and a Streamlit frontend. The backend uses local embeddings, FAISS vector search, SQLite persistence, and free-tier LLM providers. The frontend provides a lightweight multi-page study experience.
 
-PDF PROCESSING PIPELINE:
-Upload ──► PyMuPDF extract ──► LangChain chunk (1000/200)
-──► sentence-transformers embed ──► FAISS index ──► disk
+## Origin of the Project
 
-RAG PIPELINE:
-Question ──► embed query ──► FAISS search (top-5)
-──► build prompt + context ──► Groq/HF LLM ──► answer + citations
+The real motivation behind this project is not “build another chatbot.”
+
+The motivation is to support learners who:
+
+- study from large, concept-heavy textbooks
+- need understanding, not just summaries
+- revise repeatedly over weeks and months
+- prepare for competitive or professional exams where retention matters as much as first-time learning
+
+This makes GenAI and RAG a very strong fit:
+
+- RAG helps keep answers grounded in the actual textbook instead of generic AI guesses
+- generative AI can turn textbook content into flashcards, quizzes, and study explanations
+- progress tracking can help identify weak areas over time
+- prerequisite analysis can help students know what to study first before tackling difficult concepts
+
+In simple terms, the project aims to bridge this gap:
+
+```text
+Heavy textbook learning
+        +
+Poor revision workflow
+        +
+Manual flashcard effort
+        =
+High cognitive load for students
 ```
 
----
+MediTutor AI tries to reduce that cognitive load by transforming textbooks into an interactive study system.
 
-## 2. FOLDER STRUCTURE
+## Problem Statement
 
+Students who depend heavily on textbooks, especially MBBS students and serious exam aspirants, often face a very specific learning problem:
+
+- they must study large volumes of dense material
+- they need conceptual understanding, not shallow memorization
+- they need strong revision strategies over time
+- they often lack a fast way to convert textbook content into reusable revision material
+
+Traditional reading alone is not enough because it creates several practical bottlenecks:
+
+- searching for a specific concept in a large document is slow
+- asking targeted questions about a document requires manual reading and cross-referencing
+- generating revision material such as flashcards and quizzes takes extra effort
+- learners struggle to identify weak topics and prerequisite gaps
+- most AI tools are generic and not grounded in the user’s own material
+- many AI solutions are not designed safely for multi-user environments
+
+MediTutor AI addresses these problems by creating a document-grounded AI study workflow that is specific to each user and each uploaded document.
+
+## What This Project Does With GenAI and RAG
+
+This project applies generative AI and retrieval-augmented generation in a focused and practical way rather than using AI for vague open-ended chat.
+
+### 1. Textbook Grounding Through RAG
+
+Instead of answering from generic model memory, the system:
+
+- retrieves relevant chunks from the uploaded textbook
+- uses those chunks as context
+- generates answers grounded in the actual source material
+
+This is important for medical and exam-focused learning because students need textbook-faithful responses.
+
+### 2. AI-Powered Revision Material
+
+Once the document is indexed, generative AI can turn raw textbook content into:
+
+- flashcards for revision
+- MCQs for active recall
+- structured study explanations
+- prerequisite suggestions for difficult concepts
+
+This is where your GenAI knowledge becomes genuinely useful. You are not replacing studying; you are reducing the friction involved in revising effectively.
+
+### 3. Personalized Learning Feedback
+
+By combining generated quizzes with progress tracking, the system can:
+
+- identify weak topics
+- show strong topics
+- help the user focus revision where it matters most
+
+### 4. A Bridge Between Textbooks and Spaced Revision
+
+Students already use tools like Anki because spaced revision works. The opportunity here is:
+
+- use AI to generate revision material from textbooks faster
+- let students review that material inside your app
+- optionally export flashcards for external spaced-repetition workflows
+
+That makes the project especially valuable for users who are revision-heavy and textbook-heavy at the same time.
+
+## Solution Overview
+
+The system provides a document-centered study pipeline:
+
+1. A user uploads a PDF.
+2. The backend extracts text page by page.
+3. The text is split into overlapping chunks.
+4. Chunks are embedded using a local sentence-transformers model.
+5. Embeddings are stored in a user-isolated FAISS index.
+6. The user can:
+   - ask grounded questions
+   - generate flashcards
+   - generate MCQ quizzes
+   - track progress over time
+   - identify weak and prerequisite topics
+
+The project is designed around these principles:
+
+- grounded AI responses
+- full user isolation
+- production-safe request handling
+- compatibility with free services where possible
+- local persistence for uploads, vectors, cache, and progress
+
+## Core Goals
+
+- prevent cross-user data leakage
+- ensure every document, cache entry, vector index, and progress record is user-scoped
+- keep the backend usable on low-cost or free infrastructure where possible
+- maintain a clean separation between UI, API, business logic, and storage
+
+## Key Features
+
+### 1. PDF Upload and Processing
+
+Users upload text-based PDFs. The backend:
+
+- validates file type and size
+- stores the file on disk
+- extracts text using PyMuPDF
+- chunks content using a recursive text splitter
+- records document metadata in SQLite
+- creates a user-scoped vector index
+
+### 2. RAG-Based Q&A
+
+The Q&A flow:
+
+- receives a question for a specific document
+- verifies document ownership
+- retrieves top matching chunks from the user’s vector index
+- builds a context-aware prompt
+- calls an LLM provider
+- returns an answer with source citations
+
+This keeps answers grounded in the uploaded material instead of generic unsupported responses.
+
+### 3. Flashcard Generation
+
+The flashcard module:
+
+- retrieves relevant document chunks
+- prompts the LLM to generate structured flashcards
+- parses and validates model output
+- stores generated flashcards in the database
+- supports CSV export for Anki-style usage
+
+### 4. MCQ Quiz Generation and Grading
+
+The MCQ module:
+
+- retrieves relevant chunks
+- generates four-option multiple-choice questions
+- validates options and explanations
+- stores generated MCQs
+- accepts answer submission
+- grades the quiz
+- updates progress and topic-level performance
+
+### 5. Progress Tracking
+
+The progress subsystem tracks:
+
+- study sessions
+- question attempts
+- topic-level attempts and accuracy
+- weak topics
+- strong topics
+- recent learning sessions
+
+This lets the user measure improvement over time rather than only consuming generated content.
+
+### 6. Prerequisite Guidance
+
+The prerequisite checker combines:
+
+- relevant document chunks from vector retrieval
+- the user’s own weak topics from progress tracking
+- an LLM prompt that identifies missing concepts and recommended study order
+
+This helps students answer the question: “What should I know first before understanding this topic?”
+
+## Architecture
+
+## High-Level Architecture
+
+```text
+Frontend (Streamlit)
+    |
+    | HTTP / JSON + X-User-ID
+    v
+Backend (FastAPI)
+    |
+    +-- Routers
+    |     +-- PDF Router
+    |     +-- QA Router
+    |     +-- Flashcard Router
+    |     +-- MCQ Router
+    |     +-- Progress Router
+    |     +-- Prerequisite Router
+    |
+    +-- Services
+    |     +-- PDF Service
+    |     +-- Vector Service
+    |     +-- LLM Service
+    |     +-- Flashcard Service
+    |     +-- MCQ Service
+    |     +-- Progress Service
+    |
+    +-- Storage
+          +-- SQLite database
+          +-- Uploaded PDF files
+          +-- FAISS vector indexes
+          +-- Disk cache
 ```
-meditutor-ai/
-│
-├── backend/                    ← FastAPI backend
-│   ├── main.py                 ← App entry point, routes, middleware
-│   ├── config.py               ← All settings (env vars, model names)
-│   ├── database.py             ← SQLAlchemy ORM models & DB setup
-│   ├── models.py               ← Pydantic request/response schemas
-│   ├── requirements.txt        ← Python dependencies
-│   ├── Dockerfile              ← Docker image for backend
-│   │
-│   ├── routers/                ← One router per feature
-│   │   ├── pdf_router.py       ← Upload, list, delete PDFs
-│   │   ├── qa_router.py        ← RAG question answering
-│   │   ├── flashcard_router.py ← Generate & export flashcards
-│   │   ├── mcq_router.py       ← Generate & grade MCQ quizzes
-│   │   ├── progress_router.py  ← Session & progress tracking
-│   │   └── prereq_router.py    ← Prerequisite checker
-│   │
-│   ├── services/               ← Business logic
-│   │   ├── llm_service.py      ← Multi-model LLM with fallback
-│   │   ├── pdf_service.py      ← PDF extract + chunk
-│   │   ├── vector_service.py   ← FAISS embed + search
-│   │   ├── flashcard_service.py
-│   │   ├── mcq_service.py
-│   │   └── progress_service.py
-│   │
-│   ├── utils/
-│   │   └── cache.py            ← Disk-based JSON cache with TTL
-│   │
-│   └── data/                   ← Created at runtime (gitignored)
-│       ├── db/meditutor.db     ← SQLite database
-│       ├── vectors/            ← FAISS indexes per document
-│       ├── uploads/            ← Uploaded PDF files
-│       └── cache/              ← LLM response cache
-│
-├── frontend/                   ← Streamlit frontend
-│   ├── app.py                  ← Home page + sidebar + global CSS
-│   ├── requirements.txt
-│   ├── Dockerfile
-│   ├── .streamlit/
-│   │   ├── config.toml         ← Theme + server settings
-│   │   └── secrets.toml.example
-│   │
-│   └── pages/                  ← Auto-discovered by Streamlit
-│       ├── 1_Upload.py         ← PDF upload page
-│       ├── 2_QA_Chat.py        ← Chat Q&A with citations
-│       ├── 3_Flashcards.py     ← Flashcard viewer + export
-│       ├── 4_MCQ_Quiz.py       ← Interactive quiz + grading
-│       ├── 5_Progress.py       ← Dashboard & analytics
-│       └── 6_Prereq.py         ← Prerequisite checker
-│
-├── .env.example                ← Template for environment variables
-├── .gitignore
-├── docker-compose.yml          ← Local Docker dev environment
-├── render.yaml                 ← Render.com deployment spec
-├── Procfile                    ← Railway/Heroku deployment
-├── setup.sh                    ← Mac/Linux one-command setup
-├── setup_windows.bat           ← Windows one-command setup
-├── start_backend.bat
-├── start_frontend.bat
-└── README.md                   ← This file
+
+## Backend Stack
+
+- FastAPI
+- SQLAlchemy
+- SQLite
+- FAISS
+- sentence-transformers
+- PyMuPDF
+- httpx
+
+## Frontend Stack
+
+- Streamlit
+- requests
+
+## Data Flow by Feature
+
+### PDF Pipeline
+
+```text
+PDF Upload
+  -> Save file to local disk
+  -> Extract page text
+  -> Chunk text
+  -> Generate embeddings
+  -> Build FAISS index
+  -> Save document metadata in SQLite
 ```
 
----
+### Q&A Pipeline
 
-## 3. PREREQUISITES
+```text
+User question
+  -> Verify user owns document
+  -> Retrieve top-k chunks from FAISS
+  -> Build prompt
+  -> Call LLM
+  -> Return answer + sources
+```
 
-You need these installed on your computer:
+### Flashcard Pipeline
 
-| Tool | Version | Download |
-|------|---------|----------|
-| Python | 3.10 or 3.11 | https://www.python.org/downloads/ |
-| Git | Any | https://git-scm.com/downloads |
+```text
+Generate flashcards request
+  -> Verify ownership
+  -> Retrieve relevant chunks
+  -> Prompt LLM
+  -> Parse JSON response
+  -> Store flashcards
+  -> Return cards
+```
 
-**To verify Python is installed**, open a terminal/command prompt and type:
+### MCQ Pipeline
+
+```text
+Generate quiz
+  -> Verify ownership
+  -> Retrieve relevant chunks
+  -> Prompt LLM
+  -> Parse questions
+  -> Store MCQs
+
+Submit quiz
+  -> Verify ownership and session
+  -> Grade answers
+  -> Record attempts
+  -> Update topic progress
+```
+
+## Repository Structure
+
+```text
+backend/
+  config.py
+  database.py
+  main.py
+  models.py
+  routers/
+  services/
+  utils/
+  data/
+
+frontend/
+  app.py
+  common.py
+  pages/
+
+render.yaml
+Procfile
+README.md
+```
+
+## Backend Design
+
+### main.py
+
+The backend entrypoint configures:
+
+- FastAPI app creation
+- request ID middleware
+- auth middleware
+- lightweight per-user request rate limiting
+- CORS
+- gzip compression
+- health checks
+- user data management endpoints
+
+### database.py
+
+The database layer defines:
+
+- `Document`
+- `StudySession`
+- `QuestionAttempt`
+- `Flashcard`
+- `MCQuestion`
+- `TopicProgress`
+
+It also includes compatibility migrations for older rows and user-related columns.
+
+### models.py
+
+Pydantic models define typed request and response schemas for:
+
+- PDF metadata
+- Q&A
+- flashcards
+- MCQs
+- progress
+- prerequisite checks
+
+### routers/
+
+Routers handle API boundaries:
+
+- input validation
+- extracting authenticated `user_id`
+- ownership verification
+- translation between HTTP requests and service-layer logic
+
+### services/
+
+Services contain business logic:
+
+- PDF extraction and chunking
+- vector indexing and search
+- LLM provider fallback
+- flashcard generation
+- MCQ generation and grading
+- session and progress updates
+
+### utils/cache.py
+
+The cache manager stores cached JSON responses on disk, scoped per user.
+
+## Frontend Design
+
+The frontend is a multi-page Streamlit application.
+
+### app.py
+
+The home page:
+
+- initializes shared session state
+- displays document selection
+- starts study sessions
+- shows backend health information
+
+### common.py
+
+This module centralizes:
+
+- backend base URL resolution
+- `user_id` creation in session state
+- API header generation
+- study session initialization
+
+### Pages
+
+- `1_Upload.py`: upload and document listing
+- `2_QA_Chat.py`: grounded document chat
+- `3_Flashcards.py`: flashcard generation and review
+- `4_MCQ_Quiz.py`: quiz generation and submission
+- `5_Progress.py`: topic and session analytics
+- `6_Prereq.py`: prerequisite analysis
+
+## Multi-User Isolation and Security
+
+This project underwent a security-focused refactor to eliminate cross-user leakage.
+
+### User Isolation Strategy
+
+The backend now treats `X-User-ID` as the primary authenticated user context for every feature.
+
+User isolation is enforced across:
+
+- database records
+- uploaded files
+- vector indexes
+- cached responses
+- sessions
+- progress tracking
+
+### What Was Fixed
+
+The following major issues were addressed:
+
+- vector indexes are now stored per user and per document
+- routers verify document ownership before read, delete, export, and generation operations
+- `default_student` usage was removed from active request flows
+- frontend now sends `X-User-ID` consistently
+- cache entries are user-scoped
+- session handling is bound to the current user
+- prerequisite and progress flows use the actual authenticated user
+
+### Current Auth Model
+
+The project currently uses client-generated UUIDs sent in `X-User-ID`.
+
+This provides isolation but is not full identity authentication. For stronger production security, the next step would be integrating a real auth layer such as:
+
+- JWT-based auth
+- Clerk
+- Supabase Auth
+- Auth0
+
+For the current stage, the important improvement is that the backend now consistently enforces ownership based on request user context instead of ignoring it.
+
+## LLM and Retrieval Strategy
+
+### Embeddings
+
+Embeddings are generated locally with:
+
+- `sentence-transformers/all-MiniLM-L6-v2`
+
+Advantages:
+
+- no paid embedding API required
+- consistent local vectorization
+- better retrieval quality than simple keyword search
+
+Tradeoff:
+
+- memory usage is significantly higher than a lightweight lexical search system
+
+### Vector Search
+
+FAISS is used for semantic retrieval.
+
+The vector service:
+
+- loads or builds a document-specific index
+- supports exact and large-index strategies
+- stores metadata alongside vectors
+- ensures each user’s data is isolated
+
+### LLM Providers
+
+The LLM service uses a fallback strategy:
+
+1. Groq
+2. Hugging Face Inference API
+
+This keeps the project compatible with free-tier AI usage while still allowing generation features.
+
+## Database Schema Summary
+
+### Document
+
+Stores:
+
+- document ID
+- filename
+- total pages
+- total chunks
+- vector storage path
+- user ID
+- created timestamp
+
+### StudySession
+
+Stores:
+
+- session ID
+- document ID
+- user ID
+- start/end timestamps
+
+### QuestionAttempt
+
+Stores:
+
+- session ID
+- user ID
+- question text and type
+- topic
+- user answer
+- correct answer
+- correctness
+- score
+
+### Flashcard
+
+Stores:
+
+- flashcard content
+- linked document
+- user ID
+- difficulty
+- review metadata
+
+### MCQuestion
+
+Stores:
+
+- question text
+- answer options
+- explanation
+- topic
+- user ID
+
+### TopicProgress
+
+Stores:
+
+- user ID
+- document ID
+- topic
+- attempts
+- correct answers
+- accuracy
+- weak-topic flag
+
+## Deployment Status
+
+## What Was Successfully Deployed
+
+The project was deployed on Render in this state:
+
+- backend deployed and reachable
+- health endpoint working
+- database reachable
+- vector service loading
+- LLM keys configured
+- frontend able to communicate with backend
+
+The backend health response confirmed:
+
+- app startup success
+- database success
+- vector store success
+- LLM provider configuration success
+
+## Render Issue Encountered
+
+The backend repeatedly failed on Render free tier due to memory limits.
+
+Observed Render failure:
+
+- service exceeded 512 MB RAM
+- instance was killed
+- frontend received HTTP 502 during upload
+
+This is an infrastructure limitation, not a correctness bug in the business logic.
+
+### Why Render Free Tier Fails
+
+The combination of these components is too heavy for 512 MB RAM:
+
+- sentence-transformers
+- PyTorch dependency chain
+- FAISS
+- PDF extraction and chunking
+- active request processing
+
+The backend sometimes starts successfully but becomes unstable during uploads or memory-intensive operations.
+
+## Current Recommended Hosting Direction
+
+For this codebase as it exists today:
+
+- frontend can remain on Render or Streamlit
+- backend should move to a higher-memory host
+
+Recommended option:
+
+- Oracle Cloud Always Free VM for backend
+
+Reason:
+
+- enough memory for local embeddings + FAISS + FastAPI
+- preserves current architecture
+- avoids major backend redesign
+
+## Render Configuration Notes
+
+The project includes [render.yaml](./render.yaml) for backend deployment.
+
+The persistent disk mount path was corrected to:
+
+```yaml
+/opt/render/project/src/backend/data
+```
+
+This aligns Render storage with the backend’s actual runtime path.
+
+## Environment Variables
+
+### Backend
+
+- `GROQ_API_KEY`
+- `HUGGINGFACE_API_KEY`
+- `ALLOWED_ORIGINS`
+- `DEBUG`
+
+### Frontend
+
+- `BACKEND_URL`
+
+## Local Development
+
+### Backend
+
 ```bash
-python --version
-# Should print: Python 3.10.x or Python 3.11.x
-```
-
-> ⚠️ **Windows users**: During Python installation, CHECK the box that says **"Add Python to PATH"**
-
----
-
-## 4. GET YOUR FREE API KEYS
-
-You need at least ONE of these. Both are completely free.
-
----
-
-### 4A. Groq API Key (RECOMMENDED — Fastest)
-
-Groq gives you a **free API** to run Llama 3.1, Gemma, and other models at very high speed.
-
-1. Go to **https://console.groq.com**
-2. Click **Sign Up** (use Google, GitHub, or email)
-3. After logging in, click **API Keys** in the left sidebar
-4. Click **Create API Key**
-5. Give it a name: `MediTutor AI`
-6. Click **Submit**
-7. **COPY THE KEY** — it starts with `gsk_...`
-   > ⚠️ You can only see it once! Save it immediately.
-8. Paste it as `GROQ_API_KEY=gsk_your_key_here` in your `.env` file
-
-**Free tier limits:**
-- 30 requests/minute
-- 14,400 requests/day
-- No credit card required
-
----
-
-### 4B. HuggingFace API Key (FALLBACK — Always Free)
-
-1. Go to **https://huggingface.co**
-2. Click **Sign Up** (it's free)
-3. After logging in, click your profile picture → **Settings**
-4. In the left menu, click **Access Tokens**
-5. Click **New token**
-6. Name: `MediTutor AI`, Type: **Read**
-7. Click **Generate a token**
-8. **COPY THE TOKEN** — it starts with `hf_...`
-9. Paste it as `HUGGINGFACE_API_KEY=hf_your_token` in your `.env` file
-
-**Free tier:** Unlimited requests (but slow — models may take 20-30s to warm up)
-
----
-
-## 5. LOCAL SETUP (YOUR COMPUTER)
-
-### Step 1 — Download the project
-
-**Option A: From the ZIP file**
-1. Download `meditutor-ai.zip`
-2. Right-click → Extract All (Windows) or double-click (Mac)
-3. Open a terminal in the extracted folder
-
-**Option B: From Git**
-```bash
-git clone https://github.com/YOUR_USERNAME/meditutor-ai.git
-cd meditutor-ai
-```
-
----
-
-### Step 2 — Create your `.env` file
-
-```bash
-# Mac/Linux:
-cp .env.example .env
-
-# Windows (Command Prompt):
-copy .env.example .env
-```
-
-Open `.env` in any text editor (Notepad, VS Code, etc.) and fill in:
-```
-GROQ_API_KEY=gsk_your_actual_groq_key_here
-HUGGINGFACE_API_KEY=hf_your_actual_hf_token_here
-MEDITUTOR_API_URL=http://localhost:8000/api/v1
-```
-Save the file.
-
----
-
-### Step 3 — Install dependencies
-
-**Mac/Linux (one command):**
-```bash
-bash setup.sh
-```
-
-**Windows (one command):**
-```
-setup_windows.bat
-```
-
-**Or manually (both platforms):**
-```bash
-# Backend
 cd backend
-python -m venv venv
-
-# Activate (Mac/Linux):
-source venv/bin/activate
-# Activate (Windows):
-venv\Scripts\activate
-
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-deactivate
-cd ..
-
-# Frontend
-cd frontend
-python -m venv venv
-source venv/bin/activate    # Mac/Linux
-# OR: venv\Scripts\activate  # Windows
-pip install -r requirements.txt
-deactivate
-cd ..
+uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-> ⏱️ The first install takes **3-8 minutes** because it downloads PyTorch, FAISS, and the sentence-transformers model (~90 MB).
-
----
-
-### Step 4 — Start the Backend
-
-Open **Terminal 1** and run:
+### Frontend
 
 ```bash
-# Mac/Linux:
-cd backend
-source venv/bin/activate
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-
-# Windows:
-start_backend.bat
-```
-
-You should see:
-```
-INFO:     Started server process [12345]
-INFO:     Uvicorn running on http://0.0.0.0:8000
-✅ Database tables ready
-✅ Groq API configured
-```
-
-Test it: open **http://localhost:8000/docs** in your browser → you'll see the interactive API docs.
-
----
-
-### Step 5 — Start the Frontend
-
-Open **Terminal 2** (keep Terminal 1 running) and run:
-
-```bash
-# Mac/Linux:
 cd frontend
-source venv/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 streamlit run app.py
-
-# Windows:
-start_frontend.bat
 ```
 
-You should see:
-```
-  You can now view your Streamlit app in your browser.
-  Local URL: http://localhost:8501
-```
+## API Summary
 
-Your browser should open automatically. If not, go to **http://localhost:8501**
+### PDF
 
----
+- `POST /api/v1/pdf/upload`
+- `GET /api/v1/pdf/list`
+- `GET /api/v1/pdf/{doc_id}`
+- `DELETE /api/v1/pdf/{doc_id}`
+- `POST /api/v1/pdf/{doc_id}/reprocess`
 
-### Step 6 — Use the App!
+### QA
 
-1. Click **📤 Upload PDF** in the sidebar
-2. Upload any textbook PDF
-3. Wait for processing (1-3 minutes for a 200-page book)
-4. Go to **💬 Ask Questions** and ask something!
+- `POST /api/v1/qa/ask`
+- `POST /api/v1/qa/ask/batch`
+- `GET /api/v1/qa/suggestions/{document_id}`
 
----
+### Flashcards
 
-## 6. DEPLOY BACKEND TO RENDER.COM (FREE)
+- `POST /api/v1/flashcards/generate`
+- `GET /api/v1/flashcards/list/{doc_id}`
+- `GET /api/v1/flashcards/{flashcard_id}`
+- `POST /api/v1/flashcards/{flashcard_id}/review`
+- `GET /api/v1/flashcards/export/{doc_id}`
+- `DELETE /api/v1/flashcards/{flashcard_id}`
 
-Render.com gives you a **free web service** — perfect for hosting the FastAPI backend.
+### MCQ
 
-### Step 1 — Push your code to GitHub
+- `POST /api/v1/mcq/generate`
+- `POST /api/v1/mcq/submit`
 
-```bash
-git init
-git add .
-git commit -m "Initial commit"
-git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/meditutor-ai.git
-git push -u origin main
-```
+### Progress
 
-### Step 2 — Create a Render account
+- `POST /api/v1/progress/session/start`
+- `POST /api/v1/progress/session/{session_id}/end`
+- `GET /api/v1/progress/{document_id}`
 
-1. Go to **https://render.com**
-2. Sign up with GitHub (recommended)
+### Prerequisites
 
-### Step 3 — Create a new Web Service
+- `POST /api/v1/prereq/check`
 
-1. Click **New** → **Web Service**
-2. Connect your GitHub repository
-3. Configure:
+### Utility
 
-| Setting | Value |
-|---------|-------|
-| **Name** | `meditutor-ai-backend` |
-| **Root Directory** | `backend` |
-| **Runtime** | `Python 3` |
-| **Build Command** | `pip install -r requirements.txt` |
-| **Start Command** | `uvicorn main:app --host 0.0.0.0 --port $PORT` |
-| **Instance Type** | `Free` |
+- `GET /health`
+- `DELETE /api/v1/user/data`
+- `GET /api/v1/user/stats`
 
-### Step 4 — Add Environment Variables
+## Project Strengths
 
-In the Render dashboard, go to **Environment** and add:
+- strong modular separation
+- full document-grounded AI workflow
+- improved multi-user isolation
+- free-provider-compatible architecture
+- end-to-end educational workflow instead of a single chatbot feature
+- clean upgrade path to stronger auth and more scalable storage
 
-```
-GROQ_API_KEY         = gsk_your_key_here
-HUGGINGFACE_API_KEY  = hf_your_token_here
-ALLOWED_ORIGINS      = https://your-app.streamlit.app
-DEBUG                = false
-```
+## Current Limitations
 
-### Step 5 — Add a Persistent Disk
+- current user identity is UUID-based, not full auth
+- SQLite is fine for lightweight use but not ideal for high concurrency
+- local embeddings are memory-heavy for very small free hosts
+- Render free tier is insufficient for this backend architecture
+- uploaded PDFs must be text-based, not image-only scans
 
-1. In Render, go to **Disks**
-2. Click **Add Disk**
-3. Mount Path: `/app/data`
-4. Size: `1 GB` (free)
+## Future Improvements
 
-> ⚠️ Without a disk, your uploaded PDFs and database will be deleted every time the server restarts.
+- integrate true auth
+- move from SQLite to PostgreSQL if multi-user scale grows
+- add OCR for scanned PDFs
+- support background indexing jobs
+- add vector index compaction and cleanup
+- support async task queues for large uploads
+- introduce a lighter retrieval mode for ultra-low-memory deployments
+- add automated tests for routers and service ownership checks
 
-### Step 6 — Deploy!
+## Summary
 
-Click **Create Web Service**. Render will:
-1. Clone your repo
-2. Install dependencies (~5 minutes on first deploy)
-3. Start the server
+MediTutor AI is a document-grounded AI study platform designed to turn static PDFs into interactive learning experiences. It supports upload, retrieval, Q&A, flashcards, quizzes, progress analytics, and prerequisite guidance. The codebase now enforces much stronger user isolation and is structurally sound for production-minded iteration.
 
-Your backend URL will be: `https://meditutor-ai-backend.onrender.com`
-
-Test it: visit `https://meditutor-ai-backend.onrender.com/health`
-
-> ⚠️ **Free tier cold starts**: Render free services sleep after 15 minutes of inactivity. The first request after sleep takes ~30 seconds. This is normal on the free plan.
-
----
-
-## 7. DEPLOY FRONTEND TO STREAMLIT CLOUD (FREE)
-
-Streamlit Cloud hosts Streamlit apps for free.
-
-### Step 1 — Push frontend to GitHub
-
-Your frontend code should already be in your GitHub repo from Step 6.
-
-### Step 2 — Create Streamlit Cloud account
-
-1. Go to **https://share.streamlit.io**
-2. Sign in with GitHub
-
-### Step 3 — Deploy the app
-
-1. Click **New app**
-2. Select your repository
-3. Set:
-   - **Branch**: `main`
-   - **Main file path**: `frontend/app.py`
-4. Click **Advanced settings**
-5. Add secrets (click **Add secret**):
-
-```toml
-MEDITUTOR_API_URL = "https://meditutor-ai-backend.onrender.com/api/v1"
-```
-
-6. Click **Deploy!**
-
-### Step 4 — Your app is live! 🎉
-
-Your URL: `https://your-app-name.streamlit.app`
-
-### Step 5 — Update CORS on Render
-
-Go back to your Render backend → Environment:
-```
-ALLOWED_ORIGINS = https://your-app-name.streamlit.app
-```
-Redeploy.
-
----
-
-## 8. ENVIRONMENT VARIABLES REFERENCE
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `GROQ_API_KEY` | ✅ (or HF) | — | Groq API key for LLM calls |
-| `HUGGINGFACE_API_KEY` | ✅ (or Groq) | — | HuggingFace token for fallback LLM |
-| `MEDITUTOR_API_URL` | Frontend only | `http://localhost:8000/api/v1` | Backend URL used by Streamlit |
-| `ALLOWED_ORIGINS` | Production | `http://localhost:8501` | Comma-separated CORS origins |
-| `DEBUG` | No | `false` | Enable verbose logging |
-
----
-
-## 9. HOW THE MULTI-MODEL FALLBACK WORKS
-
-```
-User sends question
-        │
-        ▼
-┌───────────────────┐
-│  Check Cache      │──► HIT ──► Return cached response instantly
-│  (disk JSON)      │
-└───────┬───────────┘
-        │ MISS
-        ▼
-┌───────────────────┐
-│  Try Groq         │
-│  llama-3.1-8b     │──► Success ──► Cache + Return
-│  (attempt 1/3)    │
-└───────┬───────────┘
-        │ Rate limit / error
-        ▼
-┌───────────────────┐
-│  Try Groq         │
-│  llama3-8b-8192   │──► Success ──► Cache + Return
-│  (fallback model) │
-└───────┬───────────┘
-        │ Still failing
-        ▼
-┌───────────────────┐
-│  Try Groq         │
-│  gemma2-9b-it     │──► Success ──► Cache + Return
-└───────┬───────────┘
-        │ All Groq failed
-        ▼
-┌───────────────────┐
-│  Try HuggingFace  │
-│  Mistral-7B       │──► Success ──► Cache + Return
-│  (attempt 1-3)    │
-└───────┬───────────┘
-        │ Model loading (503)
-        │  → wait up to 30s, retry
-        ▼
-┌───────────────────┐
-│  Try HuggingFace  │
-│  Zephyr-7B        │──► Success ──► Cache + Return
-└───────┬───────────┘
-        │ All failed
-        ▼
-   Error response
-   (check API keys)
-```
-
-**Caching strategy:**
-- Every LLM response is cached to disk for 1 hour
-- Same question = instant response (no API call)
-- Cache survives server restarts
-- Up to 500 items cached (oldest evicted automatically)
-
----
-
-## 10. FEATURE WALKTHROUGHS
-
-### A. Upload a PDF
-1. Click **📤 Upload PDF**
-2. Click "Browse files" and select your PDF
-3. Click **Process & Index PDF**
-4. Wait for the spinner to finish (time depends on PDF size)
-5. You'll see: pages extracted, chunks created, ID assigned
-
-### B. Ask a Question (RAG)
-1. Select your document in the sidebar
-2. Go to **💬 Ask Questions**
-3. Type a question in the input box
-4. The AI searches your textbook for relevant passages, then generates an answer
-5. Expand **Sources** to see exactly which pages the answer came from
-
-### C. Generate Flashcards
-1. Go to **🃏 Flashcards**
-2. Optionally enter a topic (e.g. "Chapter 3: Pharmacokinetics")
-3. Set the number of cards (5-30)
-4. Click **Generate Flashcards**
-5. Click through cards, click **Reveal Answer** to flip
-6. Click **Download Anki CSV** to export for Anki spaced-repetition
-
-### D. Take an MCQ Quiz
-1. Go to **📝 MCQ Quiz**
-2. Optionally enter a topic
-3. Click **Generate Quiz**
-4. Answer all questions using radio buttons
-5. Click **Submit Quiz**
-6. See your score, which questions you got wrong, and detailed explanations
-
-### E. Track Progress
-1. Go to **📊 Progress**
-2. See overall accuracy, weak topics (< 60%), strong topics (≥ 80%)
-3. Topic breakdown shows how you're doing on each subject
-4. Recent sessions show your study history
-
-### F. Check Prerequisites
-1. Go to **🔍 Prerequisites**
-2. Type the topic you're about to study
-3. AI identifies what foundational concepts you need
-4. Shows your weak related topics from your actual quiz history
-5. Gives a step-by-step study order
-
----
-
-## 11. TROUBLESHOOTING
-
-### ❌ "Backend not reachable"
-- Make sure the FastAPI server is running in Terminal 1
-- Check that it says `Uvicorn running on http://0.0.0.0:8000`
-- Try opening http://localhost:8000/health directly
-
-### ❌ "All LLM providers failed"
-- Check your `.env` file has a valid API key
-- For Groq: verify at https://console.groq.com/keys
-- For HuggingFace: verify at https://huggingface.co/settings/tokens
-- Check you have internet access
-
-### ❌ "Could not extract text from this PDF"
-- The PDF is likely scanned (images of text, not actual text)
-- Try a different PDF — download digital textbooks in PDF format
-- Some university PDFs are protected — try another source
-
-### ❌ First install fails / takes too long
-- Ensure you have 500 MB free disk space
-- Torch and FAISS are large — the install takes 5-10 minutes on slow connections
-- If pip fails: try `pip install --upgrade pip` first
-
-### ❌ Streamlit shows blank page
-- Hard-refresh the browser: Ctrl+Shift+R (Windows) or Cmd+Shift+R (Mac)
-- Check the Streamlit terminal for error messages
-
-### ⏱️ Answers are slow (30+ seconds)
-- On free tier, this is normal for HuggingFace (model warm-up)
-- Groq is much faster — make sure your Groq key is set
-- After the first call, responses are cached and return instantly
-
-### ❌ Render backend sleeps (504 timeout)
-- Free Render services sleep after 15 min of inactivity
-- First request after sleep takes 30-60 seconds
-- This is normal on the free plan — upgrade to Starter ($7/mo) to avoid it
-
----
-
-## 12. SCALING STRATEGY (FUTURE)
-
-When you're ready to scale beyond the free tier:
-
-### Performance
-| Upgrade | Impact | Cost |
-|---------|--------|------|
-| Render Starter plan | No cold starts, faster CPU | $7/mo |
-| Replace SQLite → PostgreSQL | Better concurrent queries | Free on Render |
-| Replace FAISS → Pinecone | Cloud vector DB, no disk needed | Free tier available |
-| Add Redis cache | Faster caching vs disk JSON | ~$5/mo |
-
-### AI Models
-| Upgrade | Impact | Cost |
-|---------|--------|------|
-| Groq paid tier | Higher rate limits | Pay per token |
-| OpenAI GPT-4o | Much better quality | ~$5-15/mo typical |
-| Local Ollama | Privacy, no API limits | Free (your hardware) |
-
-### Architecture
-```
-Current (MVP):
-  Streamlit ──► FastAPI ──► SQLite + FAISS (disk)
-
-Future (Production):
-  Next.js/React ──► FastAPI + Worker Queue
-       │                    │
-       │            ┌───────┴────────┐
-       │            │                │
-       │        PostgreSQL      Pinecone DB
-       │                             │
-       └──────► Redis Cache ◄────────┘
-                (faster responses)
-```
-
-### Multi-user support
-The current MVP uses `"default_student"` as the student ID.
-To support multiple users, add:
-1. A simple login (FastAPI + JWT tokens)
-2. Pass the real `student_id` from the frontend
-3. All progress tracking is already designed to be per-student
-
----
-
-## API DOCUMENTATION
-
-When the backend is running, visit:
-- **Interactive docs**: http://localhost:8000/docs
-- **Alternative docs**: http://localhost:8000/redoc
-
-### Key Endpoints
-
-```
-POST /api/v1/pdf/upload          Upload a PDF
-GET  /api/v1/pdf/list            List all documents
-POST /api/v1/qa/ask              Ask a question (RAG)
-POST /api/v1/flashcards/generate Generate flashcards
-GET  /api/v1/flashcards/export/{doc_id}  Export Anki CSV
-POST /api/v1/mcq/generate        Generate MCQ quiz
-POST /api/v1/mcq/submit          Submit quiz answers
-GET  /api/v1/progress/{doc_id}   Get progress data
-POST /api/v1/prereq/check        Check prerequisites
-GET  /health                     Health check
-```
-
----
-
-*Built with ❤️ using FastAPI, Streamlit, FAISS, Groq, and HuggingFace.*
-*100% free to run. No paid APIs required.*
+The primary issue discovered during deployment was not application correctness but memory constraints on Render free tier. The next practical step for stable public access is to host the backend on a higher-memory free environment such as Oracle Cloud Always Free while keeping the existing backend architecture intact.
