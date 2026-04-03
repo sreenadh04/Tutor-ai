@@ -14,8 +14,14 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── API Base URL (reads from environment or defaults to localhost) ────────────
-API_URL = os.getenv("MEDITUTOR_API_URL", "http://localhost:8000/api/v1")
+import os
+
+BASE_BACKEND = os.getenv(
+    "BACKEND_URL",
+    "https://meditutor-backend-pvl5.onrender.com"
+)
+
+API_URL = f"{BASE_BACKEND}/api/v1"
 
 # ── Session State Defaults ───────────────────────────────────────────────────
 defaults = {
