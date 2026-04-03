@@ -5,7 +5,7 @@ Upload, process, and manage PDF documents.
 
 import uuid
 import logging
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Form
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Form, Query
 from sqlalchemy.orm import Session
 
 from database import get_db, Document
@@ -86,7 +86,7 @@ async def upload_pdf(
 
 
 @router.get("/list", response_model=DocumentListResponse)
-def list_documents(user_id: str, db: Session = Depends(get_db)):
+def list_documents(user_id: str = Query(...), db: Session = Depends(get_db)):
     """List all uploaded documents."""
     docs = db.query(Document).filter(
     Document.user_id == user_id
