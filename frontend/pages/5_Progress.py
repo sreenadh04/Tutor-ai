@@ -8,7 +8,14 @@ import os
 
 st.set_page_config(page_title="Progress — MediTutor AI", page_icon="📊", layout="wide")
 
-API_URL = os.getenv("MEDITUTOR_API_URL", "http://localhost:8000/api/v1")
+
+
+BASE_BACKEND = os.getenv(
+    "BACKEND_URL",
+    "https://meditutor-backend-v2.onrender.com"
+)
+
+API_URL = f"{BASE_BACKEND}/api/v1"
 
 st.title("📊 Progress Dashboard")
 st.caption("Track your performance, spot weak areas, and measure improvement over time.")

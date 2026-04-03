@@ -9,7 +9,14 @@ import time
 
 st.set_page_config(page_title="Q&A — MediTutor AI", page_icon="💬", layout="wide")
 
-API_URL = os.getenv("MEDITUTOR_API_URL", "http://localhost:8000/api/v1")
+import os
+
+BASE_BACKEND = os.getenv(
+    "BACKEND_URL",
+    "https://meditutor-backend-v2.onrender.com"
+)
+
+API_URL = f"{BASE_BACKEND}/api/v1"
 
 st.markdown("""
 <style>

@@ -8,7 +8,12 @@ import os
 
 st.set_page_config(page_title="Prerequisites — MediTutor AI", page_icon="🔍", layout="wide")
 
-API_URL = os.getenv("MEDITUTOR_API_URL", "http://localhost:8000/api/v1")
+BASE_BACKEND = os.getenv(
+    "BACKEND_URL",
+    "https://meditutor-backend-v2.onrender.com"
+)
+
+API_URL = f"{BASE_BACKEND}/api/v1"
 
 st.title("🔍 Prerequisite Checker")
 st.caption("Before diving into a complex topic, find out what foundational knowledge you need first.")
