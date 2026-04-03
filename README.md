@@ -1,6 +1,6 @@
-# MediTutor AI
+# Tutor-ai
 
-MediTutor AI started from a very practical observation from MBBS students.
+Tutor-ai started from a very practical observation from MBBS students.
 
 Unlike many other learners, medical students often cannot rely on short notes alone. They need to study directly from dense textbooks, understand concepts deeply, retain them for long periods, and revise them repeatedly in a structured way. The same pattern also appears in other serious exam ecosystems such as NEET PG, NEET UG, JEE, and GATE, where students are highly dependent on textbooks, conceptual clarity, and disciplined revision.
 
@@ -10,7 +10,7 @@ That is where the core project idea came from:
 
 > Can generative AI and RAG be used to turn heavy textbook study into an interactive, revision-friendly learning system without losing grounding in the actual source material?
 
-MediTutor AI is the answer to that question. It is a full-stack, AI-powered study assistant for textbook-based learning. A user uploads a PDF, the system extracts and chunks the text, builds a searchable knowledge base, and then enables grounded question answering, flashcard generation, MCQ generation, prerequisite guidance, and progress tracking.
+Tutor-ai is the answer to that question. It is a full-stack, AI-powered study assistant for textbook-based learning. A user uploads a PDF, the system extracts and chunks the text, builds a searchable knowledge base, and then enables grounded question answering, flashcard generation, MCQ generation, prerequisite guidance, and progress tracking.
 
 This project is built with a FastAPI backend and a Streamlit frontend. The backend uses local embeddings, FAISS vector search, SQLite persistence, and free-tier LLM providers. The frontend provides a lightweight multi-page study experience.
 
@@ -44,7 +44,7 @@ Manual flashcard effort
 High cognitive load for students
 ```
 
-MediTutor AI tries to reduce that cognitive load by transforming textbooks into an interactive study system.
+Tutor-ai tries to reduce that cognitive load by transforming textbooks into an interactive study system.
 
 ## Problem Statement
 
@@ -64,7 +64,7 @@ Traditional reading alone is not enough because it creates several practical bot
 - most AI tools are generic and not grounded in the user’s own material
 - many AI solutions are not designed safely for multi-user environments
 
-MediTutor AI addresses these problems by creating a document-grounded AI study workflow that is specific to each user and each uploaded document.
+Tutor-ai addresses these problems by creating a document-grounded AI study workflow that is specific to each user and each uploaded document.
 
 ## What This Project Does With GenAI and RAG
 
@@ -763,6 +763,6 @@ streamlit run app.py
 
 ## Summary
 
-MediTutor AI is a document-grounded AI study platform designed to turn static PDFs into interactive learning experiences. It supports upload, retrieval, Q&A, flashcards, quizzes, progress analytics, and prerequisite guidance. The codebase now enforces much stronger user isolation and is structurally sound for production-minded iteration.
+Tutor-ai is a document-grounded AI study platform designed to turn static PDFs into interactive learning experiences. It supports upload, retrieval, Q&A, flashcards, quizzes, progress analytics, and prerequisite guidance. The codebase now enforces much stronger user isolation and is structurally sound for production-minded iteration.
 
 The primary issue discovered during deployment was not application correctness but memory constraints on Render free tier. The next practical step for stable public access is to host the backend on a higher-memory free environment such as Oracle Cloud Always Free while keeping the existing backend architecture intact.
