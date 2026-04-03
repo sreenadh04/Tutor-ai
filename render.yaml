@@ -19,7 +19,7 @@ services:
         value: "false"
     disk:
       name: meditutor-data
-      mountPath: /app/backend/data
+      mountPath: /opt/render/project/src/backend/data
       sizeGB: 5
     healthCheckPath: /health
     autoDeploy: true

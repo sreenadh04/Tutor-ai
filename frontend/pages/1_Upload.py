@@ -17,6 +17,19 @@ st.set_page_config(page_title="Upload PDF - MediTutor AI", page_icon="📤", lay
 API_URL = get_api_url()
 user_id = get_or_create_user_id()
 
+
+def _extract_error_message(response: requests.Response) -> str:
+    try:
+        payload = response.json()
+        if isinstance(payload, dict):
+            return payload.get("detail") or payload.get("message") or response.text or f"HTTP {response.status_code}"
+        return str(payload)
+    except ValueError:
+        text = (response.text or "").strip()
+        if text:
+            return text[:500]
+        return f"HTTP {response.status_code}"
+
 st.title("📤 Upload PDF")
 st.caption("Upload any textbook or study material. Supported: text-based PDFs.")
 st.markdown(f"`User ID:` `{user_id}`")
@@ -40,7 +53,7 @@ if uploaded:
                     st.session_state["selected_doc_id"] = document["id"]
                     st.session_state["selected_doc_name"] = document["filename"]
                 else:
-                    st.error(response.json().get("detail", "Upload failed."))
+                    st.error(_extract_error_message(response))
             except requests.exceptions.Timeout:
                 st.error("The upload timed out. Try a smaller PDF.")
             except Exception as exc:
@@ -75,7 +88,7 @@ try:
                         st.session_state["selected_doc_name"] = None
                     st.rerun()
                 else:
-                    st.error(delete_response.json().get("detail", "Delete failed."))
+                    st.error(_extract_error_message(delete_response))
             col4.markdown(f"`{document['id'][:8]}...`")
             st.divider()
 except Exception as exc:
